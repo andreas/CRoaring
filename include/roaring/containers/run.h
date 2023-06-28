@@ -75,6 +75,8 @@ run_container_t *run_container_create(void);
  * failure. */
 run_container_t *run_container_create_given_capacity(int32_t size);
 
+run_container_t *run_container_create_given_capacity_with_arena(int32_t size, char **arena);
+
 /*
  * Shrink the capacity to the actual size, return the number of bytes saved.
  */

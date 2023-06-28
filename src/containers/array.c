@@ -35,6 +35,27 @@ extern inline int32_t array_container_serialized_size_in_bytes(int32_t card);
 extern inline bool array_container_empty(const array_container_t *array);
 extern inline bool array_container_full(const array_container_t *array);
 
+array_container_t *array_container_create_given_capacity_with_arena(int32_t size, char **arena) {
+    array_container_t *container;
+
+    if ((container = (array_container_t *)arena_alloc(arena, sizeof(array_container_t))) ==
+        NULL) {
+        return NULL;
+    }
+
+    if( size <= 0 ) { // we don't want to rely on malloc(0)
+        container->array = NULL;
+    } else if ((container->array = (uint16_t *)arena_alloc(arena, sizeof(uint16_t) * size)) ==
+        NULL) {
+        return NULL;
+    }
+
+    container->capacity = size;
+    container->cardinality = 0;
+
+    return container;
+}
+
 /* Create a new array with capacity size. Return NULL in case of failure. */
 array_container_t *array_container_create_given_capacity(int32_t size) {
     array_container_t *container;

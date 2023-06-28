@@ -53,6 +53,8 @@ array_container_t *array_container_create(void);
  * failure. */
 array_container_t *array_container_create_given_capacity(int32_t size);
 
+array_container_t *array_container_create_given_capacity_with_arena(int32_t size, char **arena);
+
 /* Create a new array containing all values in [min,max). */
 array_container_t * array_container_create_range(uint32_t min, uint32_t max);
 

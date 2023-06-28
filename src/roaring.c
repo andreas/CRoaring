@@ -3048,12 +3048,6 @@ size_t roaring_bitmap_frozen_size_in_bytes(const roaring_bitmap_t *rb) {
     return num_bytes;
 }
 
-inline static void *arena_alloc(char **arena, size_t num_bytes) {
-    char *res = *arena;
-    *arena += num_bytes;
-    return res;
-}
-
 void roaring_bitmap_frozen_serialize(const roaring_bitmap_t *rb, char *buf) {
     /*
      * Note: we do not require user to supply a specifically aligned buffer.

@@ -52,6 +52,36 @@ void bitset_container_set_all(bitset_container_t *bitset) {
 
 
 /* Create a new bitset. Return NULL in case of failure. */
+bitset_container_t *bitset_container_create_with_arena(char **arena) {
+    bitset_container_t *bitset =
+        (bitset_container_t *)arena_alloc(arena, sizeof(bitset_container_t));
+
+    if (!bitset) {
+        return NULL;
+    }
+
+    size_t align_size = 32;
+#if CROARING_IS_X64
+    int support = croaring_hardware_support();
+    if ( support & ROARING_SUPPORTS_AVX512 ) {
+	    // sizeof(__m512i) == 64
+	    align_size = 64;
+    }
+    else {
+      // sizeof(__m256i) == 32
+	    align_size = 32;
+    }
+#endif
+    bitset->words = (uint64_t *)arena_alloc(
+      arena,
+        sizeof(uint64_t) * BITSET_CONTAINER_SIZE_IN_WORDS);
+    if (!bitset->words) {
+        return NULL;
+    }
+    bitset_container_clear(bitset);
+    return bitset;
+}
+
 bitset_container_t *bitset_container_create(void) {
     bitset_container_t *bitset =
         (bitset_container_t *)roaring_malloc(sizeof(bitset_container_t));

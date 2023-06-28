@@ -46,6 +46,8 @@ typedef struct bitset_container_s bitset_container_t;
 /* Create a new bitset. Return NULL in case of failure. */
 bitset_container_t *bitset_container_create(void);
 
+bitset_container_t *bitset_container_create_with_arena(char **arena);
+
 /* Free memory. */
 void bitset_container_free(bitset_container_t *bitset);
 

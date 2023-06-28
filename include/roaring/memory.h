@@ -32,6 +32,12 @@ void roaring_free(void*);
 void* roaring_aligned_malloc(size_t, size_t);
 void roaring_aligned_free(void*);
 
+inline static void *arena_alloc(char **arena, size_t num_bytes) {
+    char *res = *arena;
+    *arena += num_bytes;
+    return res;
+}
+
 #ifdef __cplusplus
 }
 #endif

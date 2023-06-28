@@ -777,6 +777,74 @@ bool ra_portable_deserialize(roaring_array_t *answer, const char *buf, const siz
         // skipping the offsets
         buf += size * 4;
     }
+
+    // Compute total allocation size and check bounds
+    size_t alloc_size = 0;
+    for (int32_t k = 0; k < size; ++k) {
+        uint16_t tmp;
+        memcpy(&tmp, keyscards + 2*k+1, sizeof(tmp));
+        uint32_t thiscard = tmp + 1;
+        bool isbitmap = (thiscard > DEFAULT_MAX_SIZE);
+        bool isrun = false;
+        if(hasrun) {
+          if((bitmapOfRunContainers[k / 8] & (1 << (k % 8))) != 0) {
+            isbitmap = false;
+            isrun = true;
+          }
+        }
+
+        if (isbitmap) {
+            alloc_size += sizeof(bitset_container_t);
+
+            // we check that the read is allowed
+            size_t containersize = bitset_container_serialized_size_in_bytes();
+            *readbytes += containersize;
+            if(*readbytes > maxbytes) {
+              fprintf(stderr, "Running out of bytes while reading a bitset container.\n");
+              ra_clear(answer);// we need to clear the containers already allocated, and the roaring array
+              return false;
+            }
+            alloc_size += containersize;
+        } else if (isrun) {
+            alloc_size += sizeof(run_container_t);
+
+            // we check that the read is allowed
+            *readbytes += sizeof(uint16_t);
+            if(*readbytes > maxbytes) {
+              fprintf(stderr, "Running out of bytes while reading a run container (header).\n");
+              ra_clear(answer);// we need to clear the containers already allocated, and the roaring array
+              return false;
+            }
+            uint16_t n_runs;
+            memcpy(&n_runs, buf+alloc_size, sizeof(uint16_t));
+            size_t containersize = run_container_serialized_size_in_bytes(n_runs);
+            *readbytes += containersize;
+            if(*readbytes > maxbytes) {// data is corrupted?
+              fprintf(stderr, "Running out of bytes while reading a run container.\n");
+              ra_clear(answer);// we need to clear the containers already allocated, and the roaring array
+              return false;
+            }
+            alloc_size += containersize;
+        } else {
+            alloc_size += sizeof(array_container_t);
+
+            // we check that the read is allowed
+            size_t containersize = array_container_serialized_size_in_bytes(thiscard);
+            *readbytes += containersize;
+            if(*readbytes > maxbytes) {// data is corrupted?
+              fprintf(stderr, "Running out of bytes while reading an array container.\n");
+              ra_clear(answer);// we need to clear the containers already allocated, and the roaring array
+              return false;
+            }
+            alloc_size += containersize;
+        }
+    }
+
+    char *arena = (char *)roaring_malloc(alloc_size);
+    if (arena == NULL) {
+        return NULL;
+    }
+
     // Reading the containers
     for (int32_t k = 0; k < size; ++k) {
         uint16_t tmp;
@@ -791,19 +859,11 @@ bool ra_portable_deserialize(roaring_array_t *answer, const char *buf, const siz
           }
         }
         if (isbitmap) {
-            // we check that the read is allowed
-            size_t containersize = BITSET_CONTAINER_SIZE_IN_WORDS * sizeof(uint64_t);
-            *readbytes += containersize;
-            if(*readbytes > maxbytes) {
-              fprintf(stderr, "Running out of bytes while reading a bitset container.\n");
-              ra_clear(answer);// we need to clear the containers already allocated, and the roaring array
-              return false;
-            }
-            // it is now safe to read
-            bitset_container_t *c = bitset_container_create();
+            bitset_container_t *c = bitset_container_create_with_arena(&arena);
             if(c == NULL) {// memory allocation failure
               fprintf(stderr, "Failed to allocate memory for a bitset container.\n");
               ra_clear(answer);// we need to clear the containers already allocated, and the roaring array
+              // FIXME leaking arena
               return false;
             }
             answer->size++;
@@ -811,28 +871,13 @@ bool ra_portable_deserialize(roaring_array_t *answer, const char *buf, const siz
             answer->containers[k] = c;
             answer->typecodes[k] = BITSET_CONTAINER_TYPE;
         } else if (isrun) {
-            // we check that the read is allowed
-            *readbytes += sizeof(uint16_t);
-            if(*readbytes > maxbytes) {
-              fprintf(stderr, "Running out of bytes while reading a run container (header).\n");
-              ra_clear(answer);// we need to clear the containers already allocated, and the roaring array
-              return false;
-            }
             uint16_t n_runs;
             memcpy(&n_runs, buf, sizeof(uint16_t));
-            size_t containersize = n_runs * sizeof(rle16_t);
-            *readbytes += containersize;
-            if(*readbytes > maxbytes) {// data is corrupted?
-              fprintf(stderr, "Running out of bytes while reading a run container.\n");
-              ra_clear(answer);// we need to clear the containers already allocated, and the roaring array
-              return false;
-            }
-            // it is now safe to read
-
-            run_container_t *c = run_container_create();
+            run_container_t *c = run_container_create_given_capacity_with_arena(n_runs, &arena);
             if(c == NULL) {// memory allocation failure
               fprintf(stderr, "Failed to allocate memory for a run container.\n");
               ra_clear(answer);// we need to clear the containers already allocated, and the roaring array
+              // FIXME leaking arena
               return false;
             }
             answer->size++;
@@ -840,21 +885,13 @@ bool ra_portable_deserialize(roaring_array_t *answer, const char *buf, const siz
             answer->containers[k] = c;
             answer->typecodes[k] = RUN_CONTAINER_TYPE;
         } else {
-            // we check that the read is allowed
-            size_t containersize = thiscard * sizeof(uint16_t);
-            *readbytes += containersize;
-            if(*readbytes > maxbytes) {// data is corrupted?
-              fprintf(stderr, "Running out of bytes while reading an array container.\n");
-              ra_clear(answer);// we need to clear the containers already allocated, and the roaring array
-              return false;
-            }
-            // it is now safe to read
             array_container_t *c =
-                array_container_create_given_capacity(thiscard);
+                array_container_create_given_capacity_with_arena(thiscard, &arena);
             if(c == NULL) {// memory allocation failure
               fprintf(stderr, "Failed to allocate memory for an array container.\n");
               ra_clear(answer);// we need to clear the containers already allocated, and the roaring array
               return false;
+              // FIXME leaking arena
             }
             answer->size++;
             buf += array_container_read(thiscard, c, buf);

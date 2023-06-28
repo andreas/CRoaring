@@ -79,6 +79,22 @@ bool run_container_add(run_container_t *run, uint16_t pos) {
     return true;
 }
 
+run_container_t *run_container_create_given_capacity_with_arena(int32_t size, char **arena) {
+    run_container_t *run;
+    /* Allocate the run container itself. */
+    if ((run = (run_container_t *)arena_alloc(arena, sizeof(run_container_t))) == NULL) {
+        return NULL;
+    }
+    if (size <= 0 ) { // we don't want to rely on malloc(0)
+        run->runs = NULL;
+    } else if ((run->runs = (rle16_t *)arena_alloc(arena, sizeof(rle16_t) * size)) == NULL) {
+        return NULL;
+    }
+    run->capacity = size;
+    run->n_runs = 0;
+    return run;
+}
+
 /* Create a new run container. Return NULL in case of failure. */
 run_container_t *run_container_create_given_capacity(int32_t size) {
     run_container_t *run;
